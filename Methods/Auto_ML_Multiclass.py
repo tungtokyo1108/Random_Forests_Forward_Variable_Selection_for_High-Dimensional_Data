@@ -51,11 +51,31 @@ class AutoML_classification():
         
     def LogisticRegression(self, X_train, y_train, X_test, y_test):
         
-        c = np.logspace(0, 0.5, 100)
+        # Inverse of regularization strength. Smaller values specify stronger regularization. 
+        c = np.linspace(0.001, 1, 100)
+        
+        """
+        penalty = ["l2", "l1", "elasticnet"]
+        
+        # The Elastic Net mixing parameter 
+        l1_ratio = np.linspace(0, 1, 100)
+        
+        solver = ["newton-cg", "lbfgs", "liblinear", "sag", "saga"]
+        
+        hyperparameter = {"C": c, 
+                          "penalty": penalty,
+                          "l1_ratio": l1_ratio, 
+                          "solver": solver}
+        """
+        
         tuned_parameters = [{"C": c}]
         n_folds = 10 
+        #model = LogisticRegression(max_iter=1000)
         model = LogisticRegression(penalty="l1", solver = "liblinear")
         my_cv = TimeSeriesSplit(n_splits = n_folds).split(X_train)
+        #gsearch_cv = RandomizedSearchCV(estimator = model, param_distributions = hyperparameter, 
+        #                          scoring = "f1_macro", cv = my_cv, n_jobs=-1, n_iter = 100)
+        
         gsearch_cv = GridSearchCV(estimator = model, param_grid = tuned_parameters, 
                                   scoring = "f1_macro", cv = my_cv, n_jobs=-1)
         gsearch_cv.fit(X_train, y_train)
@@ -373,7 +393,8 @@ class AutoML_classification():
     def fit(self, X_train, y_train, X_test, y_test):
         
         estimators = ["Losgistic_Regression", "Stochastic_Gradient_Descent", "Naive_Bayes", "Support_Vector_Classification",
-                       "Random_Forest", "Gradient_Boosting", "Extreme_Gradient_Boosting",
+                       #Random_Forest", "Gradient_Boosting", "Extreme_Gradient_Boosting",
+                       "Random_Forest", "Gradient_Boosting",
                        "Decision_Tree", "Extra_Tree"]
         name_model = []
         all_model = []
@@ -383,6 +404,7 @@ class AutoML_classification():
         all_f1 = []
         
         for est in estimators:
+            print(est)
             if est == "Losgistic_Regression":
                 best_model, accuracy, precision, recall, f1 = self.LogisticRegression(X_train, y_train, X_test, y_test)
             elif est == "Stochastic_Gradient_Descent":
@@ -395,8 +417,8 @@ class AutoML_classification():
                 best_model, accuracy, precision, recall, f1 = self.Random_Forest(X_train, y_train, X_test, y_test)
             elif est == "Gradient_Boosting": 
                 best_model, accuracy, precision, recall, f1 = self.Gradient_Boosting(X_train, y_train, X_test, y_test)
-            elif est == "Extreme_Gradient_Boosting":
-                best_model, accuracy, precision, recall, f1 = self.Extreme_Gradient_Boosting(X_train, y_train, X_test, y_test)
+            #elif est == "Extreme_Gradient_Boosting":
+            #    best_model, accuracy, precision, recall, f1 = self.Extreme_Gradient_Boosting(X_train, y_train, X_test, y_test)
             elif est == "Decision_Tree":
                 best_model, accuracy, precision, recall, f1 = self.Decision_Tree(X_train, y_train, X_test, y_test)
             elif est == "Extra_Tree":
@@ -430,7 +452,8 @@ class AutoML_classification():
     
         best_clf.fit(X_train, y_train)
         y_pred = best_clf.predict(X_test)
-        y_pred_prob = best_clf.predict_proba(X_test)
+        #y_pred_prob = best_clf.predict_proba(X_test)
+        y_pred_prob = best_clf.predict(X_test)
     
         test_accuracy = accuracy_score(y_test, y_pred, normalize=True) * 100
         points = accuracy_score(y_test, y_pred, normalize=False)
@@ -465,7 +488,8 @@ class AutoML_classification():
             plt.text(j,i,format(cnf_matrix_norm[i,j], fmt), ha="center", va="center", 
                  color="white" if cnf_matrix_norm[i,j] > thresh else "black", fontsize=35)
     
-        plt.xticks(np.arange(num_class), labels = class_name, fontsize=30)
+        plt.xticks(np.arange(num_class), labels = class_name, fontsize=30, rotation=45, 
+                   horizontalalignment='right')
         plt.yticks(np.arange(num_class), labels = class_name, fontsize=30)
     
     
@@ -546,44 +570,6 @@ class AutoML_classification():
     
         return {"y_pred": y_pred,
                 "y_pred_prob": y_pred_prob}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
