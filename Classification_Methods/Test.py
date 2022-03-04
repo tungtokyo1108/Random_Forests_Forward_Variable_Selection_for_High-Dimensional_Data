@@ -45,6 +45,29 @@ y = cdi_meta["DiseaseState"].apply(lambda x: 0
                                           if x == "ignore-nonCDI" else 2)
 class_name = ['CDI Case','Diarrheal Control', 'Non-Diarrheal Control']
 
+
+crc_meta = pd.read_csv("CRC_meta_data.csv").set_index("Sample_Name_s")
+crc_microbiome = pd.read_csv("CRC_OTU_data.csv").set_index("Sample_Name_s")
+crc_microbiome = crc_microbiome.divide(crc_microbiome.sum(axis=1), axis=0)
+y = crc_meta["DiseaseState"]
+y = crc_meta["DiseaseState"].apply(lambda x: 0 
+                                          if x == "CRC" else 1)
+class_name = ['CRC Case','Healthy Control']
+
+tottori_2019_raw = pd.read_csv("2019_Tottori_Microbiomics.csv", index_col="Sample_ID")
+tottori_2019_df = tottori_2019_raw.drop(columns = ['level_0', 'index', 'Sample_ID.1'])
+tottori_2019_df = tottori_2019_df.divide(tottori_2019_df.sum(axis=1), axis=0)
+y = tottori_2019_raw["level_0"].apply(lambda x: 0 
+                                      if x == "W1" else 1)
+class_name = ['W1','W4']
+
+tottori_2019_metabolo = pd.read_csv("2019_Tottori_Metabolomics.csv", index_col="plot")
+tottori_2019_meta_df = tottori_2019_metabolo.drop(columns = ['index', 'plot.1'])
+y = tottori_2019_metabolo["index"].apply(lambda x: 0 
+                                      if x == "W1" else 1)
+class_name = ['W1','W4']
+
+
 X_train, X_test, y_train, y_test = train_test_split(microbiome, y, test_size=0.3, random_state=42)
 
 X_train, X_test, y_train, y_test = train_test_split(internal_node, y, test_size=0.3, random_state=42)
@@ -54,6 +77,14 @@ X_train, X_test, y_train, y_test = train_test_split(microbiome_internal, y, test
 X_train, X_test, y_train, y_test = train_test_split(cdi_function, y, test_size=0.3, random_state=42)
 
 X_train, X_test, y_train, y_test = train_test_split(cdi_gmm, y, test_size=0.3, random_state=42)
+
+X_train, X_test, y_train, y_test = train_test_split(tottori_2019_df, y, test_size=0.3, random_state=42)
+
+X_train, X_test, y_train, y_test = train_test_split(tottori_2019_meta_df, y, test_size=0.3, random_state=42)
+
+# CRC 16S microbiome 
+X_train, X_test, y_train, y_test = train_test_split(crc_microbiome, y, test_size=0.3, random_state=42)
+
 
 # ---------------------------------------------------------------------------#
 
@@ -112,7 +143,7 @@ evaluate_st = automl.evaluate_multiclass(st_best, X_train, y_train, X_test, y_te
 
 rf_best, _, _, _, _ = automl.Random_Forest(X_train, y_train, X_test, y_test)
 evaluate_rf = automl.evaluate_multiclass(rf_best, X_train, y_train, X_test, y_test,
-                            model = "Random Forest", num_class=3, top_features=20, class_name = class_name)
+                            model = "Random Forest", num_class=2, top_features=20, class_name = class_name)
 
 start = time.time()
 xgb_best, _, _, _, _ = automl.Gradient_Boosting(X_train, y_train, X_test, y_test)
@@ -343,6 +374,7 @@ from numpy.ma import MaskedArray
 from scipy.stats import rankdata
 from joblib import Parallel, delayed
 
+from sklearn.utils.fixes import _joblib_parallel_args
 from sklearn.linear_model import SGDClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.base import BaseEstimator, is_classifier, clone
@@ -362,6 +394,8 @@ from sklearn import metrics
 from sklearn.utils import deprecated
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import ExtraTreeClassifier
 from sklearn.model_selection import train_test_split
 
 ###################################################################################
@@ -491,6 +525,7 @@ while count < n_selected_features:
     time_loop = time.time()
     
     parallel = Parallel(n_jobs = -1, verbose = 1, pre_dispatch = '2*n_jobs', prefer="processes")
+    #parallel = Parallel(n_jobs = -1, verbose = 1, **_joblib_parallel_args(prefer='threads'))
     out = parallel(delayed(run_parallel)(
         base_model_rf, X_train, y_train, X_test, y_test, i, F, max_acc, i, y_test, base_model_rf)
         for i in X_train.columns)
@@ -540,11 +575,26 @@ all_info = pd.concat([c, a, f["All"]], axis=1)
 all_info.columns = ['Num_feature', 'Accuracy', 'Feature']    
 all_info = all_info.sort_values(by='Accuracy', ascending=False).reset_index(drop=True)
 
-all_info.to_csv("CRC_subset_eggNOG_accuracy.csv", index=False)
-f.to_csv("CRC_subset_eggNOG.csv")
-with open("CRC_subset_eggNOG_models.txt", "wb") as fp:
+all_info.to_csv("CRC_subset_16S_accuracy.csv", index=False)
+f.to_csv("CRC_subset_16S.csv")
+with open("CRC_subset_16S_models.txt", "wb") as fp:
     pickle.dump(all_model, fp)
 
+# =============================================================================
+# Test Parallel_RF_FVS 
+# =============================================================================
+
+import RF_Analysis_Multiclass as rfc
+from RF_Analysis_Multiclass import Parallel_RF_FVS
+import RF_Analysis_Binary as rfb
+from Auto_ML_Multiclass import AutoML_classification
+
+all_info, all_model, f = rfc.RF_FVS(X_train, y_train, X_test, y_test, n_selected_features = 1000, scoring='accuracy')
+
+all_info, f, all_model = rfc.Parallel_simple_RF_FVS(X_train, y_train, X_test, y_test)
+
+par_rf_fvs = Parallel_RF_FVS()
+all_info, f, all_model = par_rf_fvs.RF_FVS(X_train, y_train, X_test, y_test)
 
 # =============================================================================
 # Test accuracy model 
@@ -564,7 +614,7 @@ microbiome_subset.to_csv("CDI_Selected_11_Metabolic.csv")
 X_train, X_test, y_train, y_test = train_test_split(microbiome_subset, y, test_size=0.3, random_state=42)
 
 evaluate_rf = automl.evaluate_multiclass(best_model_95, X_train, y_train, X_test, y_test,
-                            model = "Random Forest", num_class=3, top_features=90, class_name = class_name)
+                            model = "Random Forest", num_class=2, top_features=90, class_name = class_name)
 
 # =============================================================================
 # Test function inference
@@ -758,3 +808,21 @@ plt.show()
 
 with open("CDI_fpr.txt", "rb") as fp:
     load_fpr = pickle.load(fp)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
