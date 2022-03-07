@@ -214,6 +214,92 @@ while count < n_selected_features:
     all_acc.append(max_acc)
     all_model.append(best_model)
 
+###############################################################################
+
+def run_parallel(estimator, X_train, y_train, X_test, y_test, i, F, max_acc, idx, y_pred, best_estimator):
+    
+    if i not in F:
+        #idx = i
+        #y_pred = y_test
+        F.append(i)
+        X_train_tmp = X_train[F]
+        acc = 0
+        rsearch_cv = RandomizedSearchCV(estimator=estimator,
+                                                random_state=42,
+                                                param_distributions=hyperparameter,
+                                                n_iter=n_iter_search,
+                                                #cv=cv_timeSeries,
+                                                cv=2,
+                                                scoring=scoring,
+                                                n_jobs=-1)
+        rsearch_cv.fit(X_train_tmp, y_train)
+        best_estimator = rsearch_cv.best_estimator_
+        y_pred = best_estimator.predict(X_test[F])
+        acc = metrics.accuracy_score(y_test, y_pred)
+        F.pop()
+        if acc > max_acc:
+            max_acc = acc
+            idx = i
+            best_model = best_estimator
+    
+    return idx, best_estimator, max_acc
+
+# selected feature set, initialized to be empty
+F = []
+count = 0
+ddict = {}
+all_F = []
+all_c = []
+all_acc = []
+all_model = []
+start = time.time()
+# Restart algorithm
+# F.pop(-1)
+while count < n_selected_features:
+    max_acc = 0
+    time_loop = time.time()
+    
+    parallel = Parallel(n_jobs = -1, verbose = 1, pre_dispatch = '2*n_jobs', prefer="processes")
+    #parallel = Parallel(n_jobs = -1, verbose = 1, **_joblib_parallel_args(prefer='threads'))
+    out = parallel(delayed(run_parallel)(
+        base_model_rf, X_train, y_train, X_test, y_test, i, F, max_acc, i, y_test, base_model_rf)
+        for i in X_train.columns)
+    
+    idx_list = []
+    best_model_list = []
+    max_acc_list = []
+    for i in range(0, len(out)):
+        idx_list.append(out[i][0])
+        best_model_list.append(out[i][1])
+        max_acc_list.append(out[i][2])
+    
+    idx_list = pd.Series(idx_list)
+    best_model_list = pd.Series(best_model_list)
+    max_acc_list = pd.Series(max_acc_list)
+    
+    total = pd.concat([idx_list, best_model_list, max_acc_list], axis=1)   
+    total.columns = ['Feature', 'Model','Accuracy']    
+    total = total.sort_values(by='Accuracy', ascending=False).reset_index(drop=True)
+                    
+    F.append(total.iloc[0]["Feature"])
+    count += 1
+        
+    print("The current number of features: {} - Accuracy: {}%".format(count, round(total.iloc[0]["Accuracy"]*100, 2)))
+    print("Time for computation: {}".format(time.time() - time_loop))
+    
+    # Resart forward algorithm
+    #count = len(F) - 1
+    #count += 1
+    #print("The current number of features: {} - Accuracy: {}%".format(count, round(total.iloc[0]["Accuracy"]*100, 2)))
+    #print("Time for computation: {}".format(time.time() - time_loop))
+
+    all_F.append(np.array(F))
+    all_c.append(count)
+    all_acc.append(total.iloc[0]["Accuracy"])
+    all_model.append(total.iloc[0]["Model"])
+
+time.time() - start
+
 c = pd.DataFrame(all_c)
 a = pd.DataFrame(all_acc)
 f = pd.DataFrame(all_F)    
@@ -240,6 +326,7 @@ subset = all_features_grid.drop(columns = ["Unnamed: 0"])
 best_model_95 = load_grid_model[9]
 subset = subset.iloc[9].dropna()
 rumi_region_subset = rumi_region[subset]
+rumi_region_subset.to_csv("RF_subset_multi_37.csv")
 
 X_train, X_test, y_train, y_test = train_test_split(rumi_region_subset, y, test_size=0.3, random_state=42)
 
